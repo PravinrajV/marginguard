@@ -8,6 +8,11 @@ import { DecisionService } from './service';
 import { UnconfiguredAI, type AdvisoryAdapter } from '../adapters/advisory';
 import { AdvisoryService } from './advisory';
 import { UnconfiguredPayPalSandbox, type PayPalSandboxAdapter } from '../adapters/paypal';
+import {
+  localRequestSecurity,
+  PublicDemoRefusedError,
+  type RequestSecurity,
+} from './runtime-config';
 const payload = z
   .object({
     orderId: z.string().regex(/^MG-\d{4}$/),
@@ -15,28 +20,44 @@ const payload = z
     evidence: z.string().max(2000),
   })
   .strict();
-const origins = new Set([
-  'http://127.0.0.1:5173',
-  'http://localhost:5173',
-  'http://127.0.0.1:8787',
-  'http://localhost:8787',
-]);
 export function createApp(
   store: Store,
   adapter: AdvisoryAdapter = new UnconfiguredAI(),
   paypal: PayPalSandboxAdapter = new UnconfiguredPayPalSandbox(),
+  security: RequestSecurity = localRequestSecurity(),
 ) {
+  if (security.publicDemo && paypal.configured) {
+    throw new PublicDemoRefusedError(
+      'Public fixture demo cannot start with a configured PayPal sandbox adapter. This mode serves fixtures only and must not send PayPal sandbox refunds.',
+    );
+  }
   const app = new Hono<{ Variables: { session: Session } }>();
   const service = new DecisionService(store, Date.now, paypal);
   const advisory = new AdvisoryService(adapter, service);
+  const allowedHosts = new Set(security.allowedHosts.map((host) => host.toLowerCase()));
+  const cookiePrefix = security.secureCookies ? ('host' as const) : undefined;
+  const sessionCookie = {
+    httpOnly: true as const,
+    sameSite: 'Strict' as const,
+    path: '/',
+    maxAge: 86400,
+    ...(security.secureCookies ? { secure: true as const, prefix: 'host' as const } : {}),
+  };
   app.use(
     '/api/*',
     bodyLimit({ maxSize: 8192, onError: (c) => c.json({ error: 'Request is too large.' }, 413) }),
   );
   app.use('*', async (c, next) => {
-    const host = new URL(c.req.url).hostname;
-    if (!['127.0.0.1', 'localhost'].includes(host))
-      return c.json({ error: 'Local loopback access only.' }, 403);
+    const host = new URL(c.req.url).hostname.toLowerCase();
+    if (!allowedHosts.has(host))
+      return c.json(
+        {
+          error: security.publicDemo
+            ? 'This host is not allowed for the fixture demo.'
+            : 'Local loopback access only.',
+        },
+        403,
+      );
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'no-referrer');
     c.header('Cache-Control', 'no-store');
@@ -48,32 +69,27 @@ export function createApp(
     await next();
   });
   app.get('/api/session', (c) => {
-    let session = store.session(getCookie(c, 'mg_session') ?? '');
+    let session = store.session(getCookie(c, 'mg_session', cookiePrefix) ?? '');
     if (!session) {
       session = store.create();
-      setCookie(c, 'mg_session', session.id, {
-        httpOnly: true,
-        sameSite: 'Strict',
-        path: '/',
-        maxAge: 86400,
-      });
+      setCookie(c, 'mg_session', session.id, sessionCookie);
     }
     return c.json({
       csrf: session.csrf,
-      mode: 'LOCAL_FIXTURES',
+      mode: security.publicDemo ? 'PUBLIC_FIXTURE_DEMO' : 'LOCAL_FIXTURES',
       merchant: 'Kiln & Field / fictional merchant',
       paypal: paypal.configured ? 'CONFIGURED' : 'NOT_CONNECTED',
       ai: advisory.configured ? 'CONFIGURED' : 'NOT_CONNECTED',
     });
   });
   app.use('/api/*', async (c, next) => {
-    const session = store.session(getCookie(c, 'mg_session') ?? '');
+    const session = store.session(getCookie(c, 'mg_session', cookiePrefix) ?? '');
     if (!session)
       return c.json({ error: 'Session expired. Reload to start a local workspace.' }, 401);
     c.set('session', session);
     if (!['GET', 'HEAD'].includes(c.req.method)) {
       if (
-        !origins.has(c.req.header('Origin') ?? '') ||
+        !security.allowedOrigins.has(c.req.header('Origin') ?? '') ||
         c.req.header('X-CSRF-Token') !== session.csrf
       )
         return c.json({ error: 'Origin or session confirmation failed.' }, 403);
@@ -112,12 +128,7 @@ export function createApp(
   });
   app.post('/api/reset', (c) => {
     const session = store.create();
-    setCookie(c, 'mg_session', session.id, {
-      httpOnly: true,
-      sameSite: 'Strict',
-      path: '/',
-      maxAge: 86400,
-    });
+    setCookie(c, 'mg_session', session.id, sessionCookie);
     return c.json({ csrf: session.csrf });
   });
   app.notFound((c) => c.json({ error: 'Route not found.' }, 404));

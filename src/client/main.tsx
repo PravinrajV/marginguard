@@ -21,6 +21,7 @@ function App() {
   const [csrf, setCsrf] = useState('');
   const [aiConfigured, setAiConfigured] = useState(false);
   const [paypalConfigured, setPaypalConfigured] = useState(false);
+  const [publicDemo, setPublicDemo] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiPacket, setAiPacket] = useState<{
     key: string;
@@ -71,11 +72,14 @@ function App() {
     let active = true;
     (async () => {
       try {
-        const session = await api<{ csrf: string; ai: string; paypal: string }>('session');
+        const session = await api<{ csrf: string; ai: string; paypal: string; mode: string }>(
+          'session',
+        );
         if (!active) return;
         setCsrf(session.csrf);
         setAiConfigured(session.ai === 'CONFIGURED');
         setPaypalConfigured(session.paypal === 'CONFIGURED');
+        setPublicDemo(session.mode === 'PUBLIC_FIXTURE_DEMO');
         const result = await api<{ packets: Packet[]; audit: AuditEvent[] }>('orders');
         if (active) {
           setPackets(result.packets);
@@ -271,9 +275,8 @@ function App() {
           Sandbox only <span className="banner-divider">/</span> Fictional merchant{' '}
           <span className="banner-divider">/</span> No real money{' '}
           <span className="local-badge">
-            {paypalConfigured
-              ? 'LOCAL FIXTURES · PAYPAL SANDBOX CONNECTED'
-              : 'LOCAL FIXTURES · NO PAYPAL CONNECTION'}
+            {publicDemo ? 'PUBLIC FIXTURE DEMO' : 'LOCAL FIXTURES'} ·{' '}
+            {paypalConfigured ? 'PAYPAL SANDBOX CONNECTED' : 'NO PAYPAL CONNECTION'}
           </span>
         </div>
         <header className="topbar">
@@ -881,7 +884,7 @@ function App() {
                   PayPal adapter: {paypalConfigured ? 'sandbox configured' : 'not connected'} <i />{' '}
                   Runtime AI: {aiConfigured ? 'configured · advisory only' : 'not connected'}
                 </span>
-                <span>LOCAL BUILD / 0.1</span>
+                <span>{publicDemo ? 'PUBLIC FIXTURE DEMO / 0.1' : 'LOCAL BUILD / 0.1'}</span>
               </footer>
             </>
           )}

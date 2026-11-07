@@ -12,7 +12,7 @@ MarginGuard puts that evidence beside the decision. It is a functioning local we
 
 ## Current status
 
-The local build has been exercised with a genuine $80 PayPal Sandbox sale, an observed $2.56 processing fee and a completed, human-approved $15 sandbox refund. Runtime Cloudflare Workers AI has also been exercised locally. These are verified local milestones, not claims of production readiness. There is no public repository, hosted deployment, published video or submitted Devpost entry yet. MIT license text is prepared in `LICENSE`; publishing it and the source still requires the entrant to approve release.
+The local build has been exercised with a genuine $80 PayPal Sandbox sale, an observed $2.56 processing fee and a completed, human-approved $15 sandbox refund. Runtime Cloudflare Workers AI has also been exercised locally. These are verified local milestones, not claims of production readiness. The public repository is [https://github.com/PravinrajV/marginguard](https://github.com/PravinrajV/marginguard), MIT license, branch `main`. The public demo video is [https://www.youtube.com/watch?v=8PnOlpBOck8](https://www.youtube.com/watch?v=8PnOlpBOck8). The server can run a fixture-only public demo. Hosting is not done yet, and this file does not name a hosted application URL. The MIT license text is in `LICENSE`.
 
 ## Run locally
 
@@ -30,7 +30,21 @@ npm start
 
 Open **http://127.0.0.1:8787**. The built SPA and API share this loopback-only port. Keep port 8787 free, run commands from this directory, and stop with Ctrl+C. No database service is required: the first start applies `migrations/001_local.sql` and creates `.data/marginguard.sqlite`.
 
-For development, `npm run dev` starts the API on 127.0.0.1:8787 and Vite on **http://127.0.0.1:5173**, with `/api` proxied to the API. Neither server binds publicly.
+For development, `npm run dev` starts the API on 127.0.0.1:8787 and Vite on **http://127.0.0.1:5173**, with `/api` proxied to the API. Leave `PUBLIC_ORIGIN` unset for this. Vite stays on 127.0.0.1. If `PUBLIC_ORIGIN` is set, the API process follows the public fixture demo rules below.
+
+### Public fixture demo
+
+`npm start` with `PUBLIC_ORIGIN` unset stays on **127.0.0.1:8787**. Only the `127.0.0.1` and `localhost` hosts are accepted. `HOST` and `PORT` are ignored in that mode, so they cannot turn the local server into a public bind.
+
+A browser demo for judges is fixtures only. Set `PUBLIC_ORIGIN` to the exact https origin they will open. Set `HOST` and `PORT` when the platform needs a bind address and port. With `PUBLIC_ORIGIN` set and `HOST` omitted, the process binds `0.0.0.0`. These values are examples, not a deployed host:
+
+```bash
+PUBLIC_ORIGIN=https://example.com HOST=0.0.0.0 PORT=8787 npm start
+```
+
+The server then allows that hostname, and `127.0.0.1` and `localhost` for a same-machine check. It allows that https origin for CSRF. The session cookie is `__Host-mg_session`: Secure, HttpOnly, SameSite=Strict, Path=/, and no Domain attribute. PayPal Sandbox and Workers AI credentials are not required. When they are absent, both adapters stay disconnected and make no network call. If `PAYPAL_SANDBOX_CLIENT_ID` or `PAYPAL_SANDBOX_CLIENT_SECRET` is non-empty, the process prints an error and exits before it listens. A public demo must not be able to send PayPal sandbox refunds. Do not place the private `.data/mg-1001-sandbox.json` overlay on that host.
+
+This repository does not name a hosted URL and does not claim the demo is already running. Judges who want a live PayPal Sandbox refund or a Workers AI advisory should run the app locally with their own credentials. Do not repeat the completed $15 sandbox refund. Judge access to the fixture demo, once hosted, is intended to stay free through **December 15, 2026, 11:00 AM ET**.
 
 ### Fixture mode needs no accounts
 
@@ -127,9 +141,10 @@ Contribution = gross minus recorded refunds, retained fee, goods cost and shippi
 - Sandbox only, fictional merchant, no real customer data, no autonomous money movement.
 - Human review binds the exact amount and evidence; the AI cannot approve or call PayPal.
 - Strict decimal-string parsing and safe integer cents; invalid, excessive and stale amounts fail closed.
-- Opaque HttpOnly / SameSite=Strict local session cookies, origin/CSRF checks, request-size caps, loopback restriction and production CSP. HTTP local cookies intentionally do not claim public HTTPS hardening.
+- Default `npm start` binds 127.0.0.1 only and allows only the `127.0.0.1` and `localhost` hosts. Session cookies are HttpOnly and SameSite=Strict. On loopback HTTP they are not marked Secure. Request-size caps, origin/CSRF checks and the production CSP still apply.
+- Public fixture mode is opt-in with `PUBLIC_ORIGIN`. It allows that https host and origin, sets a Secure `__Host-` session cookie, and exits before listen if either PayPal sandbox credential is set. It still serves fixtures.
 - Local sessions last 24 hours and remain isolated. Audit is application append-only, not tamper-proof. Local SQLite is not encrypted.
-- This is not a production refund engine. There is no authenticated merchant tenancy, durable cross-session capture reservation, automatic payment reconciliation or crash-safe external refund recovery. Separate approvals can race externally before local state is committed. Do not use this app for real financial activity or expose it publicly as-is.
+- This is not a production refund engine. There is no authenticated merchant tenancy, durable cross-session capture reservation, automatic payment reconciliation or crash-safe external refund recovery. Separate approvals can race externally before local state is committed. Do not use this app for real financial activity. Do not put PayPal credentials on a public process.
 - A timeout can mean PayPal received the request. Do not generate a new approval to retry an uncertain refund. Investigate using the same request ID and authoritative refund/capture reads. Recovery is not an automated workflow in this build.
 - `.data/`, `.env*` other than the placeholder example, `.dev.vars*`, logs, secrets and build output are ignored. Do not share the private database or overlay.
 
@@ -144,4 +159,4 @@ npm run format:check
 
 Automated tests use fictional data, mock network adapters and in-memory SQLite; they never execute a live sandbox refund. See [verification](docs/verification.md), [architecture](docs/architecture.md), [development AI disclosure](docs/tool-use.md) and [dependency notices](docs/third-party.md). No savings, customers, production deployment or security certification is claimed.
 
-For judging, the intended path is complete local run instructions plus the real integration evidence and a public demo video, not a mandatory hosted service. Public source availability, MIT publication approval, a clean release rehearsal, a public YouTube demo under three minutes, final Devpost form review and submission remain gates. Judge access must remain free through **December 15, 2026, 11:00 AM ET**. Do not promise paid third-party API access; the entrant must resolve a permitted free access path before submission. The official deadline is **November 12, 2026, 3:00 PM ET**; Official Rules prevail.
+For judging, the fixture demo is the browser path and a local run is the live-integration path. The hosted process, when started with `PUBLIC_ORIGIN` and without PayPal sandbox credentials, serves fictional orders only. Hosting is not done yet, and this repository does not name a hosted application URL. Judges who want a live PayPal Sandbox refund or a Workers AI advisory use their own credentials locally. Do not repeat the completed $15 sandbox refund. Source is public under the MIT license at [https://github.com/PravinrajV/marginguard](https://github.com/PravinrajV/marginguard) on `main`. The public demo video is [https://www.youtube.com/watch?v=8PnOlpBOck8](https://www.youtube.com/watch?v=8PnOlpBOck8). Final Devpost form review and submission remain gates. Judge access must remain free through **December 15, 2026, 11:00 AM ET**. Do not promise paid third-party API access; the entrant must resolve a permitted free access path before submission. The official deadline is **November 12, 2026, 3:00 PM ET**; Official Rules prevail.

@@ -58,8 +58,12 @@ it('runs a clearly labeled local approval and simulation end-to-end', async () =
 });
 it('sets HttpOnly SameSite cookie and restrictive API headers', async () => {
   const r = await app.request(url + '/api/session');
-  expect(r.headers.get('set-cookie')).toContain('HttpOnly');
-  expect(r.headers.get('set-cookie')).toContain('SameSite=Strict');
+  const cookie = r.headers.get('set-cookie') ?? '';
+  expect(cookie).toContain('HttpOnly');
+  expect(cookie).toContain('SameSite=Strict');
+  expect(cookie).not.toContain('Secure');
+  expect(cookie).not.toContain('__Host-');
   expect(r.headers.get('content-security-policy')).toContain("connect-src 'self'");
   expect(r.headers.get('cache-control')).toBe('no-store');
+  expect((await r.json()).mode).toBe('LOCAL_FIXTURES');
 });

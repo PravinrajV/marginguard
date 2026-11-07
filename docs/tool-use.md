@@ -16,4 +16,4 @@ A genuine $80 sandbox sale was captured. Its observed fee was $2.56; net was $77
 
 ## Publication status
 
-This remains a local workspace. No public repository, deployment, video upload or Devpost submission is claimed. MIT license text is prepared locally; publication still requires entrant approval. No competition history was fabricated.
+This remains a local workspace. No public repository, deployment, video upload or Devpost submission is claimed. The server can start as a fixture-only public demo; that support is not a deployment record and no hosted hostname is named here. MIT license text is prepared locally; publication still requires entrant approval. No competition history was fabricated.
