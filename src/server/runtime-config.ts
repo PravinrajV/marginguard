@@ -1,6 +1,7 @@
 /**
  * Loopback is the default. Public fixture demo mode is opt-in.
  * A non-empty PayPal sandbox credential prevents that mode from starting.
+ * Public mode also allows fixed platform probe hosts and optional Railway domain hostnames.
  */
 export class PublicDemoRefusedError extends Error {
   constructor(message: string) {
@@ -23,6 +24,7 @@ export type RuntimeConfig = RequestSecurity & {
 };
 
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost'] as const;
+const PROBE_HOSTS = ['0.0.0.0', 'healthcheck.railway.app'] as const;
 const LOOPBACK_ORIGINS = [
   'http://127.0.0.1:5173',
   'http://localhost:5173',
@@ -48,7 +50,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv): RuntimeConfig {
     hostname: bindHost(env.HOST),
     port: bindPort(env.PORT),
     publicOrigin: origin.origin,
-    allowedHosts: [...LOOPBACK_HOSTS, origin.hostname],
+    allowedHosts: publicAllowedHosts(origin.hostname, env),
     allowedOrigins: new Set([...LOOPBACK_ORIGINS, origin.origin]),
     secureCookies: true,
   };
@@ -72,6 +74,57 @@ function localConfig(): RuntimeConfig {
 
 function credentialPresent(value: string | undefined): boolean {
   return (value ?? '').trim().length > 0;
+}
+
+function publicAllowedHosts(originHost: string, env: NodeJS.ProcessEnv): string[] {
+  return uniqueHosts([
+    ...LOOPBACK_HOSTS,
+    originHost,
+    ...PROBE_HOSTS,
+    platformHostname(env.RAILWAY_PRIVATE_DOMAIN),
+    platformHostname(env.RAILWAY_PUBLIC_DOMAIN),
+  ]);
+}
+
+function uniqueHosts(hosts: readonly (string | null)[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const host of hosts) {
+    if (!host) continue;
+    const normalized = host.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function platformHostname(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || /[\s\\]/.test(trimmed)) return null;
+  try {
+    const url = trimmed.includes('://') ? new URL(trimmed) : new URL(`http://${trimmed}`);
+    if (trimmed.includes('://') && url.protocol !== 'http:' && url.protocol !== 'https:')
+      return null;
+    if (!trimmed.includes('://') && (url.pathname !== '/' || url.search || url.hash)) return null;
+    const hostname = url.hostname.toLowerCase();
+    return isDnsOrIpv4Host(hostname) ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDnsOrIpv4Host(host: string): boolean {
+  if (!host || host.length > 253 || host.endsWith('.')) return false;
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+    return host.split('.').every((part) => {
+      const octet = Number(part);
+      return octet <= 255 && String(octet) === part;
+    });
+  }
+  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/.test(
+    host,
+  );
 }
 
 function parsePublicOrigin(raw: string): URL {

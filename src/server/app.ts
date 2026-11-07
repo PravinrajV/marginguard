@@ -48,6 +48,9 @@ export function createApp(
     bodyLimit({ maxSize: 8192, onError: (c) => c.json({ error: 'Request is too large.' }, 413) }),
   );
   app.use('*', async (c, next) => {
+    if (c.req.path === '/healthz' && (c.req.method === 'GET' || c.req.method === 'HEAD')) {
+      return c.json({ ok: true });
+    }
     const host = new URL(c.req.url).hostname.toLowerCase();
     if (!allowedHosts.has(host))
       return c.json(
@@ -131,7 +134,10 @@ export function createApp(
     setCookie(c, 'mg_session', session.id, sessionCookie);
     return c.json({ csrf: session.csrf });
   });
-  app.notFound((c) => c.json({ error: 'Route not found.' }, 404));
+  app.notFound((c) => {
+    if (c.req.method === 'GET' && c.req.path === '/') return c.body(null, 200);
+    return c.json({ error: 'Route not found.' }, 404);
+  });
   app.onError((error, c) => {
     if (error instanceof PolicyError)
       return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404 | 409);

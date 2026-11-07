@@ -34,7 +34,7 @@ For development, `npm run dev` starts the API on 127.0.0.1:8787 and Vite on **ht
 
 ### Public fixture demo
 
-`npm start` with `PUBLIC_ORIGIN` unset stays on **127.0.0.1:8787**. Only the `127.0.0.1` and `localhost` hosts are accepted. `HOST` and `PORT` are ignored in that mode, so they cannot turn the local server into a public bind.
+`npm start` with `PUBLIC_ORIGIN` unset stays on **127.0.0.1:8787**. Only the `127.0.0.1` and `localhost` hosts are accepted, except `GET` and `HEAD /healthz`, which return `{ "ok": true }` and do not open a session. `HOST` and `PORT` are ignored in that mode, so they cannot turn the local server into a public bind.
 
 A browser demo for judges is fixtures only. Set `PUBLIC_ORIGIN` to the exact https origin they will open. Set `HOST` and `PORT` when the platform needs a bind address and port. With `PUBLIC_ORIGIN` set and `HOST` omitted, the process binds `0.0.0.0`. These values are examples, not a deployed host:
 
@@ -42,7 +42,7 @@ A browser demo for judges is fixtures only. Set `PUBLIC_ORIGIN` to the exact htt
 PUBLIC_ORIGIN=https://example.com HOST=0.0.0.0 PORT=8787 npm start
 ```
 
-The server then allows that hostname, and `127.0.0.1` and `localhost` for a same-machine check. It allows that https origin for CSRF. The session cookie is `__Host-mg_session`: Secure, HttpOnly, SameSite=Strict, Path=/, and no Domain attribute. PayPal Sandbox and Workers AI credentials are not required. When they are absent, both adapters stay disconnected and make no network call. If `PAYPAL_SANDBOX_CLIENT_ID` or `PAYPAL_SANDBOX_CLIENT_SECRET` is non-empty, the process prints an error and exits before it listens. A public demo must not be able to send PayPal sandbox refunds. Do not place the private `.data/mg-1001-sandbox.json` overlay on that host.
+The server then allows that hostname, `127.0.0.1` and `localhost`, `0.0.0.0`, `healthcheck.railway.app`, and the hostnames of non-empty `RAILWAY_PRIVATE_DOMAIN` and `RAILWAY_PUBLIC_DOMAIN`. It allows that https origin for CSRF. `GET` and `HEAD /healthz` return `{ "ok": true }` for any host, do not set a session cookie, and do not read a request body. Other paths keep the host allowlist. The session cookie is `__Host-mg_session`: Secure, HttpOnly, SameSite=Strict, Path=/, and no Domain attribute. PayPal Sandbox and Workers AI credentials are not required. When they are absent, both adapters stay disconnected and make no network call. If `PAYPAL_SANDBOX_CLIENT_ID` or `PAYPAL_SANDBOX_CLIENT_SECRET` is non-empty, the process prints an error and exits before it listens. A public demo must not be able to send PayPal sandbox refunds. Do not place the private `.data/mg-1001-sandbox.json` overlay on that host.
 
 This repository does not name a hosted URL and does not claim the demo is already running. Judges who want a live PayPal Sandbox refund or a Workers AI advisory should run the app locally with their own credentials. Do not repeat the completed $15 sandbox refund. Judge access to the fixture demo, once hosted, is intended to stay free through **December 15, 2026, 11:00 AM ET**.
 
@@ -142,7 +142,7 @@ Contribution = gross minus recorded refunds, retained fee, goods cost and shippi
 - Human review binds the exact amount and evidence; the AI cannot approve or call PayPal.
 - Strict decimal-string parsing and safe integer cents; invalid, excessive and stale amounts fail closed.
 - Default `npm start` binds 127.0.0.1 only and allows only the `127.0.0.1` and `localhost` hosts. Session cookies are HttpOnly and SameSite=Strict. On loopback HTTP they are not marked Secure. Request-size caps, origin/CSRF checks and the production CSP still apply.
-- Public fixture mode is opt-in with `PUBLIC_ORIGIN`. It allows that https host and origin, sets a Secure `__Host-` session cookie, and exits before listen if either PayPal sandbox credential is set. It still serves fixtures.
+- Public fixture mode is opt-in with `PUBLIC_ORIGIN`. It allows that https host and origin, plus `0.0.0.0`, `healthcheck.railway.app`, and optional Railway domain hostnames. It sets a Secure `__Host-` session cookie, and exits before listen if either PayPal sandbox credential is set. It still serves fixtures.
 - Local sessions last 24 hours and remain isolated. Audit is application append-only, not tamper-proof. Local SQLite is not encrypted.
 - This is not a production refund engine. There is no authenticated merchant tenancy, durable cross-session capture reservation, automatic payment reconciliation or crash-safe external refund recovery. Separate approvals can race externally before local state is committed. Do not use this app for real financial activity. Do not put PayPal credentials on a public process.
 - A timeout can mean PayPal received the request. Do not generate a new approval to retry an uncertain refund. Investigate using the same request ID and authoritative refund/capture reads. Recovery is not an automated workflow in this build.
