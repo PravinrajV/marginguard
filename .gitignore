@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.data/
+.env
+.env.*
+!.env.example
+.dev.vars*
+coverage/
+# Local credentials, raw evidence and private key material
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*overlay*.json
+mg-1001-sandbox.json
