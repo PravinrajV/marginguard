@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { expect, it, vi } from 'vitest';
 import { UnconfiguredAI } from '../src/adapters/advisory';
 import { UnconfiguredPayPalSandbox, type PayPalSandboxAdapter } from '../src/adapters/paypal';
@@ -51,7 +53,13 @@ it('allowlists the public https host and uses the platform bind', () => {
     publicOrigin: 'https://example.com',
     secureCookies: true,
   });
-  expect(config.allowedHosts).toEqual(['127.0.0.1', 'localhost', 'example.com']);
+  expect(config.allowedHosts).toEqual([
+    '127.0.0.1',
+    'localhost',
+    'example.com',
+    '0.0.0.0',
+    'healthcheck.railway.app',
+  ]);
   expect(config.allowedOrigins.has('https://example.com')).toBe(true);
   const explicit = resolveRuntimeConfig({
     PUBLIC_ORIGIN: 'https://demo.example:8443',
@@ -79,6 +87,53 @@ it('rejects a public origin that is not a bare https origin', () => {
       PublicDemoRefusedError,
     );
   }
+});
+
+it('keeps loopback mode when Railway domain variables are set without PUBLIC_ORIGIN', () => {
+  const config = resolveRuntimeConfig({
+    HOST: '0.0.0.0',
+    PORT: '8080',
+    RAILWAY_PRIVATE_DOMAIN: 'marginguard.railway.internal',
+    RAILWAY_PUBLIC_DOMAIN: 'https://example.com',
+  });
+  expect(config).toMatchObject({
+    publicDemo: false,
+    hostname: '127.0.0.1',
+    port: 8787,
+    publicOrigin: null,
+    secureCookies: false,
+    allowedHosts: ['127.0.0.1', 'localhost'],
+  });
+});
+
+it('allowlists platform probe hosts and railway domain hostnames', () => {
+  const config = resolveRuntimeConfig({
+    PUBLIC_ORIGIN: 'https://example.com',
+    RAILWAY_PRIVATE_DOMAIN: ' marginguard.railway.internal:8080 ',
+    RAILWAY_PUBLIC_DOMAIN: 'https://App.Example:8443/unused',
+  });
+  expect(config.allowedHosts).toEqual([
+    '127.0.0.1',
+    'localhost',
+    'example.com',
+    '0.0.0.0',
+    'healthcheck.railway.app',
+    'marginguard.railway.internal',
+    'app.example',
+  ]);
+  const ignored = resolveRuntimeConfig({
+    PUBLIC_ORIGIN: 'https://example.com',
+    RAILWAY_PRIVATE_DOMAIN: '   ',
+    RAILWAY_PUBLIC_DOMAIN: 'not a host',
+  });
+  expect(ignored.allowedHosts).toEqual([
+    '127.0.0.1',
+    'localhost',
+    'example.com',
+    '0.0.0.0',
+    'healthcheck.railway.app',
+  ]);
+  expect(ignored.allowedHosts).not.toContain('10.9.8.7');
 });
 
 it('refuses public demo startup when either PayPal sandbox credential is set', () => {
@@ -178,6 +233,89 @@ it('serves the configured public host with disconnected adapters and no network 
   }
 });
 
+it('answers Railway-style health hosts without opening the allowlist', async () => {
+  const network = vi
+    .spyOn(globalThis, 'fetch')
+    .mockRejectedValue(new Error('Network forbidden in this test'));
+  const store = new SQLiteStore(':memory:');
+  try {
+    const security = resolveRuntimeConfig({
+      PUBLIC_ORIGIN: 'https://example.com',
+      RAILWAY_PRIVATE_DOMAIN: 'marginguard.railway.internal',
+      RAILWAY_PUBLIC_DOMAIN: 'demo.example:8443',
+    });
+    const app = createApp(store, new UnconfiguredAI(), new UnconfiguredPayPalSandbox(), security);
+    const health = await app.request('http://evil.example/healthz');
+    expect(health.status).toBe(200);
+    expect(health.headers.get('content-type')).toContain('application/json');
+    expect(await health.json()).toEqual({ ok: true });
+    expect(health.headers.get('set-cookie')).toBeNull();
+    const head = await app.request('http://10.9.8.7/healthz', { method: 'HEAD' });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe('');
+    expect(head.headers.get('set-cookie')).toBeNull();
+    expect(
+      (await app.request('http://evil.example/healthz', { method: 'POST', body: '{}' })).status,
+    ).toBe(403);
+    for (const path of ['/', '/api/session']) {
+      const denied = await app.request(`https://evil.example${path}`);
+      expect(denied.status, path).toBe(403);
+      expect(await denied.json()).toEqual({
+        error: 'This host is not allowed for the fixture demo.',
+      });
+      expect(denied.headers.get('set-cookie')).toBeNull();
+    }
+    const root = await app.request('https://example.com/');
+    expect(root.status).toBe(200);
+    expect(root.headers.get('set-cookie')).toBeNull();
+    const session = await app.request('https://example.com/api/session');
+    expect(session.status).toBe(200);
+    expect(await session.json()).toMatchObject({
+      mode: 'PUBLIC_FIXTURE_DEMO',
+      paypal: 'NOT_CONNECTED',
+    });
+    expect(session.headers.get('set-cookie')).toContain('__Host-mg_session=');
+    for (const host of [
+      '0.0.0.0',
+      'healthcheck.railway.app',
+      'marginguard.railway.internal',
+      'demo.example',
+    ]) {
+      const response = await app.request(`http://${host}/`);
+      expect(response.status, host).toBe(200);
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+    expect((await app.request('http://10.9.8.7/')).status).toBe(403);
+    expect(network).not.toHaveBeenCalled();
+  } finally {
+    store.close();
+    network.mockRestore();
+  }
+});
+
+it('still serves the built demo page for an allowed public host', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'mg-static-'));
+  writeFileSync(join(directory, 'index.html'), '<!doctype html><title>fixture demo</title>');
+  const store = new SQLiteStore(':memory:');
+  try {
+    const app = createApp(
+      store,
+      new UnconfiguredAI(),
+      new UnconfiguredPayPalSandbox(),
+      resolveRuntimeConfig({ PUBLIC_ORIGIN: 'https://example.com' }),
+    );
+    app.get('/*', serveStatic({ root: directory }));
+    const page = await app.request('https://example.com/');
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('fixture demo');
+    expect(page.headers.get('set-cookie')).toBeNull();
+    expect((await app.request('https://evil.example/')).status).toBe(403);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 it('refuses to build a public app around a configured PayPal adapter', () => {
   const store = new SQLiteStore(':memory:');
   const paypal: PayPalSandboxAdapter = {
@@ -211,6 +349,11 @@ it('default app access stays limited to loopback hosts', async () => {
     const allowed = await app.request('http://localhost:8787/api/session');
     expect(allowed.status).toBe(200);
     expect((await allowed.json()).mode).toBe('LOCAL_FIXTURES');
+    expect((await app.request('http://evil.example/')).status).toBe(403);
+    const health = await app.request('http://evil.example/healthz');
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ ok: true });
+    expect(health.headers.get('set-cookie')).toBeNull();
     const cookie = allowed.headers.get('set-cookie') ?? '';
     expect(cookie).not.toContain('Secure');
     expect(cookie).not.toContain('__Host-');
