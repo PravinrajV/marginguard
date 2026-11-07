@@ -2,7 +2,7 @@
 
 ## Implemented local system
 
-React 19 and Vite serve a TypeScript SPA. Same-origin JSON requests reach Hono on `@hono/node-server`, bound only to 127.0.0.1:8787. Zod checks request boundaries. Pure domain modules calculate safe integer-cent contribution and reconcile capture/fee evidence. `DecisionService` enforces canonical payload matching, session ownership, approval expiry and exact human confirmation.
+React 19 and Vite serve a TypeScript SPA. Same-origin JSON requests reach Hono on `@hono/node-server`. The default bind is 127.0.0.1:8787 and the host allowlist is `127.0.0.1` and `localhost`. `PUBLIC_ORIGIN` opts into a fixture-only public demo: the process may bind a platform address, allow that https host, and set a Secure `__Host-` cookie. That mode refuses to start when either PayPal sandbox credential is set, and it does not construct the sandbox adapter. Zod checks request boundaries. Pure domain modules calculate safe integer-cent contribution and reconcile capture/fee evidence. `DecisionService` enforces canonical payload matching, session ownership, approval expiry and exact human confirmation.
 
 `SQLiteStore` persists a per-session JSON aggregate and application audit rows using `node:sqlite`. This is a local stand-in, not D1 or a deployed Worker. A D1 migration would require asynchronous transactions, conditional writes and redesigned reservation/recovery semantics. Audit is application append-only, not tamper-proof.
 
@@ -22,7 +22,7 @@ React 19 and Vite serve a TypeScript SPA. Same-origin JSON requests reach Hono o
 - `POST /api/advisory`: explicitly requested model read plus deterministic server brief.
 - `POST /api/reset`: new isolated session; previous records retained, no payment balance restored.
 
-Mutation routes require JSON, allowlisted loopback Origin and CSRF. Request bodies are capped at 8 KiB. The browser has no cross-origin API access or credentials. Local HTTP cookies do not claim HTTPS deployment hardening.
+Mutation routes require JSON, an allowlisted Origin and CSRF. The allowlist is the loopback dev origins, plus the public https origin when `PUBLIC_ORIGIN` is set. Request bodies are capped at 8 KiB. The browser has no cross-origin API access or credentials. Loopback HTTP cookies are not marked Secure. The public fixture demo sets a Secure `__Host-` cookie for its https origin.
 
 ## Production gaps, not hidden features
 

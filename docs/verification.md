@@ -34,3 +34,14 @@ The original session retains its actual refund audit. The private overlay now in
 - Exact public release, license/source publication, final form/eligibility review and a public YouTube video under three minutes, each after approval.
 
 This is a functioning local sandbox app, not a production financial system. Cross-session authoritative payment reconciliation, durable external reservations and crash-safe refund recovery remain absent. No remote repository, deployment, video upload or Devpost project was created.
+
+## Public fixture demo checks
+
+Same day, after the record above. These checks cover the opt-in fixture demo. They do not repeat the earlier sandbox refund.
+
+- `npm test`: **133 tests passed across 10 files**. New cases cover loopback host refusal, public-host allowlisting, the Secure `__Host-` cookie, and process refusal when a PayPal sandbox credential is set. Adapters in those tests are unconfigured or mocked. No live network call.
+- `npm run typecheck`, `npm run build`, and `npm run format:check`: **passed**.
+- A process with `HOST=0.0.0.0` and `PORT=39999`, and without `PUBLIC_ORIGIN`, listened only on 127.0.0.1:8787. `Host: evil.example` returned 403.
+- `PUBLIC_ORIGIN=https://example.com:8443` without PayPal credentials allowed that host, set `__Host-mg_session` with Secure, and reported `PUBLIC_FIXTURE_DEMO` with PayPal and Workers AI `NOT_CONNECTED`. `example.com` was a local test name, not a deployed host.
+- The same public origin with `PAYPAL_SANDBOX_CLIENT_ID` set exited 1 before listen. The message did not include the credential.
+- Browser check: `http://127.0.0.1:8787` showed `LOCAL FIXTURES · NO PAYPAL CONNECTION` and blocked MG-1006 for missing fee evidence. A temporary local TLS proxy for `https://example.com:8443` showed `PUBLIC FIXTURE DEMO · NO PAYPAL CONNECTION`, footer `PUBLIC FIXTURE DEMO / 0.1`, and MG-1001 fixture math of $43.11 then $28.11. No refund was submitted. This does not claim the demo is hosted.
